@@ -6,34 +6,39 @@ import (
 )
 
 type Node struct {
-	NodeId string
+	NodeId  string
+	LastMsg *Message
 }
 
-func NewNode(id string) Node {
+func NewNode(initMsg *Message) Node {
 	return Node{
-		NodeId: id,
+		NodeId:  *initMsg.Body.NodeId,
+		LastMsg: initMsg,
 	}
 }
 
 func (n *Node) InitOk() {
-	// msg := Message{
-	// 	Src: n.NodeId,
-	// 	Body: MessageBody{
-	// 		Type: "init_ok",
-	// 		// InReplyTo: ,
-	// 	},
-	// }
+	msg := Message{
+		Src:  n.NodeId,
+		Dest: n.LastMsg.Src,
+		Body: MessageBody{
+			Type:      "init_ok",
+			InReplyTo: n.LastMsg.Body.MsgId,
+		},
+	}
+
+	json.NewEncoder(os.Stdout).Encode(msg)
 }
 
 // set up a messages package?
 type Message struct {
-	Src  string
-	Dest string
-	Body MessageBody
+	Src  string      `json:"src"`
+	Dest string      `json:"dest,omitempty"`
+	Body MessageBody `json:"body"`
 }
 
 type MessageBody struct {
-	Type      string
+	Type      string    `json:"type"`
 	MsgId     *uint     `json:"msg_id,omitempty"`
 	InReplyTo *uint     `json:"in_reply_to,omitempty"`
 	NodeId    *string   `json:"node_id,omitempty"`
@@ -52,7 +57,7 @@ func main() {
 		// just pass the message to the node
 		// then you can test
 		if msg.Body.Type == "init" {
-			node = NewNode(*msg.Body.NodeId)
+			node = NewNode(&msg)
 			node.InitOk()
 		}
 	}
