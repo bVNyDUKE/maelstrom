@@ -17,7 +17,7 @@ func NewNode(initMsg *Message) Node {
 	}
 }
 
-func (n *Node) InitOk() {
+func (n *Node) Init() {
 	msg := Message{
 		Src:  n.NodeId,
 		Dest: n.LastMsg.Src,
@@ -28,6 +28,20 @@ func (n *Node) InitOk() {
 	}
 
 	json.NewEncoder(os.Stdout).Encode(msg)
+}
+
+func (n *Node) Echo(msg *Message) {
+	reply := Message{
+		Src:  n.NodeId,
+		Dest: msg.Src,
+		Body: MessageBody{
+			Type:      "echo_ok",
+			InReplyTo: msg.Body.MsgId,
+			Echo:      msg.Body.Echo,
+		},
+	}
+
+	json.NewEncoder(os.Stdout).Encode(reply)
 }
 
 // set up a messages package?
@@ -42,6 +56,7 @@ type MessageBody struct {
 	MsgId     *uint     `json:"msg_id,omitempty"`
 	InReplyTo *uint     `json:"in_reply_to,omitempty"`
 	NodeId    *string   `json:"node_id,omitempty"`
+	Echo      *string   `json:"echo,omitempty"`
 	NodeIds   *[]string `json:"node_ids,omitempty"`
 }
 
@@ -54,11 +69,16 @@ func main() {
 			os.Exit(1)
 		}
 
-		// just pass the message to the node
+		// pass a reader to the node from which to read the messages
 		// then you can test
+		// or maybe take bot an input and an output
 		if msg.Body.Type == "init" {
 			node = NewNode(&msg)
-			node.InitOk()
+			node.Init()
+		}
+
+		if msg.Body.Type == "echo" {
+			node.Echo(&msg)
 		}
 	}
 }
