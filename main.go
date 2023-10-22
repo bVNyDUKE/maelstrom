@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 )
 
@@ -17,13 +16,13 @@ func NewNode(id string) Node {
 }
 
 func (n *Node) InitOk() {
-	msg := Message{
-		Src: n.NodeId,
-		Body: MessageBody{
-			Type: "init_ok",
-			// InReplyTo: ,
-		},
-	}
+	// msg := Message{
+	// 	Src: n.NodeId,
+	// 	Body: MessageBody{
+	// 		Type: "init_ok",
+	// 		// InReplyTo: ,
+	// 	},
+	// }
 }
 
 // set up a messages package?
