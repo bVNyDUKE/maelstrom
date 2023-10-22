@@ -6,7 +6,7 @@ RUN apt-get install -y openjdk-17-jdk graphviz gnuplot git ruby-full
 COPY ./lib/bb /usr/bin/bb
 
 WORKDIR /app
-COPY . .
+COPY ./lib/maelstrom .
 
 CMD bash
 
