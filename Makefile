@@ -1,8 +1,11 @@
+gobuild:
+	go build cmd
+
 build:
-	docker build . -t mlstrm
+	docker build ./build/Dockerfile -t mlstrm
 
 run:
-	docker run -it -v /home/kpanda/mlstrm:/app mlstrm
+	docker run -it -v /home/kpanda/mlstrm:/app/test mlstrm
 
-test:
-	cd lib/maelstrom && ./maelstrom test -w echo --bin ../mlstrm --nodes n1 --time-limit 10 --log-stderr
+echo:
+	./maelstrom test -w echo --bin test/mlstrm --nodes n1 --time-limit 10 --log-stderr
