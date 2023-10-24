@@ -1,11 +1,16 @@
+d := docker
+vol := /home/kpanda/mlstrm/app:/app/test
+r := $(d) run -it -v $(vol) mlstrm
+w := echo
+
 gobuild:
 	go build cmd
 
 build:
-	docker build ./build/Dockerfile -t mlstrm
+	$(d) build ./build/Dockerfile -t mlstrm
 
-run:
-	docker run -it -v /home/kpanda/mlstrm/app:/app/test mlstrm
+run: build
+	$(r)
 
-echo:
-	docker run -it -v /home/kpanda/mlstrm/app:/app/test mlstrm ./maelstrom test -w echo --bin test/mlstrm --nodes n1 --time-limit 10 --log-stderr
+test: build
+	$(r) ./maelstrom test -w $(w) --bin test/mlstrm --nodes n1 --time-limit 10 --log-stderr
