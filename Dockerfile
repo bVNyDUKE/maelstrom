@@ -7,7 +7,6 @@ RUN apt-get install make
 COPY ./build/maelstrom/bb /usr/bin/bb
 
 WORKDIR /app
-COPY Makefile .
 COPY mlstrm .
 COPY ./build/maelstrom/ .
 
