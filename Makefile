@@ -1,15 +1,26 @@
-SRCS := $(shell find ./app -name '*.go')
-VOL := /home/kpanda/mlstrm/app:/app/test
+APP_NAME := mlstrm
+DOCKER_IMAGE_NAME := mlstrm-img
+DOCKER_CONTAINER_NAME := mlstrm-container
+APP_DIR := ./app
+GO_SRCS := $(wildcard $(APP_DIR)/*.go)
+
 w := echo
 
-gobuild: $(SRCS)
-	go build cmd
+$(APP_NAME): $(GO_SRCS)
+	cd $(APP_DIR) && go build -o ../$(APP_NAME)
 
-build: gobuild
-	docker build . -t mlstrm
+build: $(APP_NAME) ./Dockerfile
+	docker build . -t $(DOCKER_IMAGE_NAME)
 
 run: build
-	docker run -it -v $(VOL) mlstrm
+	docker run --name $(DOCKER_CONTAINER_NAME) -it $(DOCKER_IMAGE_NAME)
 
 test: build
-	docker run -it --rm -v $(VOL) mlstrm ./maelstrom test -w $(w) --bin test/mlstrm --nodes n1 --time-limit 10 --log-stderr
+	docker run --name $(DOCKER_CONTAINER_NAME) -it --rm $(DOCKER_IMAGE_NAME) ./maelstrom test -w $(w) --bin mlstrm --nodes n1 --time-limit 10 --log-stderr
+
+clean: 
+	rm -f $(APP_NAME)
+	docker rm $(DOCKER_CONTAINER_NAME) 2>/dev/null || true
+	docker rmi $(DOCKER_IMAGE_NAME) 2>/dev/null || true
+
+.PHONY: clean

@@ -8,6 +8,7 @@ COPY ./build/maelstrom/bb /usr/bin/bb
 
 WORKDIR /app
 COPY Makefile .
+COPY mlstrm .
 COPY ./build/maelstrom/ .
 
 CMD bash
