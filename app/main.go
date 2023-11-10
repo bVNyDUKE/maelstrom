@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"os"
 )
@@ -62,23 +63,27 @@ type MessageBody struct {
 
 func main() {
 	var node Node
-	for {
-		var msg Message
-		err := json.NewDecoder(os.Stdin).Decode(&msg)
-		if err != nil {
-			os.Exit(1)
-		}
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		jsonString := scanner.Text()
+		go func(jsonString string) {
+			var msg Message
+			err := json.Unmarshal([]byte(jsonString), &msg)
+			if err != nil {
+				os.Exit(1)
+			}
 
-		// pass a reader to the node from which to read the messages
-		// then you can test
-		// or maybe take bot an input and an output
-		if msg.Body.Type == "init" {
-			node = NewNode(&msg)
-			node.Init()
-		}
+			// pass a reader to the node from which to read the messages
+			// then you can test
+			// or maybe take bot an input and an output
+			if msg.Body.Type == "init" {
+				node = NewNode(&msg)
+				node.Init()
+			}
 
-		if msg.Body.Type == "echo" {
-			node.Echo(&msg)
-		}
+			if msg.Body.Type == "echo" {
+				node.Echo(&msg)
+			}
+		}(jsonString)
 	}
 }
