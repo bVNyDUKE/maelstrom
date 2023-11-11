@@ -65,14 +65,12 @@ func main() {
 	var node Node
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		jsonString := scanner.Text()
-		go func(jsonString string) {
-			var msg Message
-			err := json.Unmarshal([]byte(jsonString), &msg)
-			if err != nil {
-				os.Exit(1)
-			}
-
+		line := scanner.Bytes()
+		var msg Message
+		if err := json.Unmarshal(line, &msg); err != nil {
+			os.Exit(1)
+		}
+		go func() {
 			// pass a reader to the node from which to read the messages
 			// then you can test
 			// or maybe take bot an input and an output
@@ -84,6 +82,6 @@ func main() {
 			if msg.Body.Type == "echo" {
 				node.Echo(&msg)
 			}
-		}(jsonString)
+		}()
 	}
 }
