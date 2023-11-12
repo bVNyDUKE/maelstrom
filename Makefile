@@ -18,6 +18,9 @@ run: build
 test: build
 	docker run --name $(DOCKER_CONTAINER_NAME) -it --rm $(DOCKER_IMAGE_NAME) ./maelstrom test -w $(w) --bin mlstrm --nodes n1 --time-limit 10 --log-stderr
 
+generate: build
+	docker run --name $(DOCKER_CONTAINER_NAME) -it --rm $(DOCKER_IMAGE_NAME) ./maelstrom test -w unique-ids --bin mlstrm --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition
+
 clean: 
 	rm -f $(APP_NAME)
 	docker rm $(DOCKER_CONTAINER_NAME) 2>/dev/null || true
