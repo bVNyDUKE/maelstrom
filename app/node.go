@@ -31,6 +31,7 @@ type Node struct {
 	LastMsg  *Message
 	Stdin    io.Reader
 	Stdout   io.Writer
+	resChan  chan Message
 	messages []int
 }
 
@@ -38,6 +39,7 @@ func NewNode() *Node {
 	return &Node{
 		Stdin:    os.Stdin,
 		Stdout:   os.Stdout,
+		resChan:  make(chan Message),
 		messages: []int{},
 	}
 }
@@ -52,7 +54,7 @@ func (n *Node) res(msg *Message, body *MessageBody) error {
 		Body: *body,
 	}
 
-	json.NewEncoder(n.Stdout).Encode(res)
+	n.resChan <- res
 	return nil
 }
 
@@ -99,7 +101,21 @@ func (n *Node) topology(msg *Message) {
 	})
 }
 
+func (n *Node) handleResponses() {
+	for {
+		select {
+		case msg := <-n.resChan:
+			json.NewEncoder(n.Stdout).Encode(msg)
+		}
+	}
+}
+
+// i guess i need a channel to receive the messages
+// and also one more channel to get the responses
+// that way i can avoid a mutex?
 func (n *Node) Run() error {
+	go n.handleResponses()
+
 	scanner := bufio.NewScanner(n.Stdin)
 	for scanner.Scan() {
 		line := scanner.Bytes()
