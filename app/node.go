@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 )
 
@@ -15,32 +16,35 @@ type Message struct {
 }
 
 type MessageBody struct {
-	Type      string    `json:"type"`
-	MsgId     *uint     `json:"msg_id,omitempty"`
-	InReplyTo *uint     `json:"in_reply_to,omitempty"`
-	NodeId    *string   `json:"node_id,omitempty"`
-	Echo      *string   `json:"echo,omitempty"`
-	NodeIds   *[]string `json:"node_ids,omitempty"`
-	Id        *string   `json:"id,omitempty"`
-	Message   *int      `json:"message,omitempty"`
-	Messages  *[]int    `json:"messages,omitempty"`
+	Type      string               `json:"type"`
+	MsgId     *uint                `json:"msg_id,omitempty"`
+	InReplyTo *uint                `json:"in_reply_to,omitempty"`
+	NodeId    *string              `json:"node_id,omitempty"`
+	Echo      *string              `json:"echo,omitempty"`
+	NodeIds   *[]string            `json:"node_ids,omitempty"`
+	Id        *string              `json:"id,omitempty"`
+	Message   *int                 `json:"message,omitempty"`
+	Messages  *[]int               `json:"messages,omitempty"`
+	Topology  *map[string][]string `json:"topology,omitempty"`
 }
 
 type Node struct {
-	NodeId   string
-	LastMsg  *Message
-	Stdin    io.Reader
-	Stdout   io.Writer
-	resChan  chan Message
-	messages []int
+	NodeId    string
+	LastMsg   *Message
+	Stdin     io.Reader
+	Stdout    io.Writer
+	resChan   chan Message
+	messages  []int
+	neighbors []string
 }
 
 func NewNode() *Node {
 	return &Node{
-		Stdin:    os.Stdin,
-		Stdout:   os.Stdout,
-		resChan:  make(chan Message),
-		messages: []int{},
+		Stdin:     os.Stdin,
+		Stdout:    os.Stdout,
+		resChan:   make(chan Message),
+		messages:  []int{},
+		neighbors: []string{},
 	}
 }
 
@@ -56,6 +60,16 @@ func (n *Node) res(msg *Message, body *MessageBody) error {
 
 	n.resChan <- res
 	return nil
+}
+
+func (n *Node) send(dest string, body *MessageBody) {
+	res := Message{
+		Src:  n.NodeId,
+		Dest: dest,
+		Body: *body,
+	}
+
+	n.resChan <- res
 }
 
 func (n *Node) init(msg *Message) {
@@ -81,7 +95,26 @@ func (n *Node) generate(msg *Message) {
 }
 
 func (n *Node) broadcast(msg *Message) {
-	n.messages = append(n.messages, *msg.Body.Message)
+	content := *msg.Body.Message
+
+	for c := range n.messages {
+		if c == content {
+			n.res(msg, &MessageBody{
+				Type: "broadcast_ok",
+			})
+			return
+		}
+	}
+
+	n.messages = append(n.messages, content)
+
+	for _, dest := range n.neighbors {
+		n.send(dest, &MessageBody{
+			Type:    "broadcast",
+			Message: &content,
+		})
+	}
+
 	n.res(msg, &MessageBody{
 		Type: "broadcast_ok",
 	})
@@ -95,6 +128,16 @@ func (n *Node) read(msg *Message) {
 }
 
 func (n *Node) topology(msg *Message) {
+	topology := *msg.Body.Topology
+	if topology == nil {
+		log.Fatal("No topology in message")
+	}
+	neighbors, ok := topology[n.NodeId]
+	if !ok {
+		log.Fatalf("No neighbors for node: %s", n.NodeId)
+	}
+	n.neighbors = neighbors
+
 	n.res(msg, &MessageBody{
 		Type:      "topology_ok",
 		InReplyTo: msg.Body.MsgId,

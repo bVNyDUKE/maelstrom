@@ -1,14 +1,10 @@
-FROM ubuntu:22.04
+FROM alpine:latest
 
-RUN apt-get update && apt-get upgrade
-RUN apt-get install -y openjdk-17-jdk graphviz gnuplot git ruby-full
-RUN apt-get install make
+RUN apk upgrade
+RUN apk add openjdk17-jdk graphviz gnuplot git ruby-full make
 
 COPY ./build/maelstrom/bb /usr/bin/bb
 
 WORKDIR /app
 COPY mlstrm .
 COPY ./build/maelstrom/ .
-
-CMD bash
-
