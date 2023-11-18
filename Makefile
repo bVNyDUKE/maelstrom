@@ -27,6 +27,9 @@ broadcast: build
 broadcast-partition: build
 	$(TEST) -w broadcast --bin mlstrm --time-limit 20 --rate 10 --node-count 5 --nemesis partition
 
+broadcast-perf: build
+	$(TEST) -w broadcast --bin mlstrm --topology total --time-limit 20 --rate 100 --latency 100 --node-count 25 --nemesis partition
+
 clean: 
 	rm -f $(APP_NAME)
 	docker rm $(DOCKER_CONTAINER_NAME) 2>/dev/null || true

@@ -161,7 +161,7 @@ func (n *Node) broadcast(msg *Message) {
 				handler,
 			)
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 }
 
@@ -203,7 +203,10 @@ func (n *Node) Run() error {
 		go func() {
 			inReply := msg.Body.InReplyTo
 			if inReply != nil {
-				if handler, ok := n.callbacks[*msg.Body.InReplyTo]; ok {
+				n.mut.Lock()
+				handler, ok := n.callbacks[*msg.Body.InReplyTo]
+				n.mut.Unlock()
+				if ok {
 					handler(&msg)
 					return
 				}
