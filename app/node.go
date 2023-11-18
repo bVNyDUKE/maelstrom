@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 )
 
 type Message struct {
@@ -39,6 +40,7 @@ type Node struct {
 	nextMsgId uint
 	messages  []int
 	neighbors []string
+	callbacks map[uint]func(*Message)
 }
 
 func NewNode() *Node {
@@ -48,6 +50,7 @@ func NewNode() *Node {
 		nextMsgId: 0,
 		messages:  []int{},
 		neighbors: []string{},
+		callbacks: make(map[uint]func(*Message)),
 	}
 }
 
@@ -74,7 +77,11 @@ func (n *Node) res(msg *Message, body *MessageBody) {
 	n.handleRes(&res)
 }
 
-func (n *Node) send(dest string, body *MessageBody) {
+func (n *Node) send(dest string, body *MessageBody, handler func(*Message)) {
+	n.mut.Lock()
+	n.callbacks[n.nextMsgId] = handler
+	n.mut.Unlock()
+
 	res := Message{
 		Src:  n.NodeId,
 		Dest: dest,
@@ -112,7 +119,7 @@ func (n *Node) broadcast(msg *Message) {
 	})
 	content := *msg.Body.Message
 
-	for c := range n.messages {
+	for _, c := range n.messages {
 		if c == content {
 			return
 		}
@@ -120,11 +127,41 @@ func (n *Node) broadcast(msg *Message) {
 
 	n.messages = append(n.messages, content)
 
-	for _, dest := range n.neighbors {
-		n.send(dest, &MessageBody{
-			Type:    "broadcast",
-			Message: &content,
-		})
+	gossipTo := make([]string, 0, len(n.neighbors))
+	for _, neigh := range n.neighbors {
+		if neigh == msg.Src {
+			continue
+		}
+		gossipTo = append(gossipTo, neigh)
+	}
+
+	for {
+		log.Printf("Retrying message %v, gossip to %T", msg.Body.MsgId, gossipTo)
+		if len(gossipTo) == 0 {
+			return
+		}
+
+		for _, dest := range gossipTo {
+			handler := func(msg *Message) {
+				var newGossipTo []string
+				for _, des := range gossipTo {
+					if des == msg.Src {
+						continue
+					}
+					newGossipTo = append(newGossipTo, des)
+				}
+				gossipTo = newGossipTo
+			}
+			n.send(
+				dest,
+				&MessageBody{
+					Type:    "broadcast",
+					Message: &content,
+				},
+				handler,
+			)
+		}
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -164,6 +201,14 @@ func (n *Node) Run() error {
 			os.Exit(1)
 		}
 		go func() {
+			inReply := msg.Body.InReplyTo
+			if inReply != nil {
+				if handler, ok := n.callbacks[*msg.Body.InReplyTo]; ok {
+					handler(&msg)
+					return
+				}
+			}
+
 			if msg.Body.Type == "init" {
 				n.init(&msg)
 			}
