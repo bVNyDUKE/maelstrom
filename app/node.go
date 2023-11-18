@@ -18,7 +18,7 @@ type Message struct {
 
 type MessageBody struct {
 	Type      string               `json:"type"`
-	MsgId     *uint                `json:"msg_id,omitempty"`
+	MsgId     uint                 `json:"msg_id,omitempty"`
 	InReplyTo *uint                `json:"in_reply_to,omitempty"`
 	NodeId    *string              `json:"node_id,omitempty"`
 	Echo      *string              `json:"echo,omitempty"`
@@ -30,11 +30,13 @@ type MessageBody struct {
 }
 
 type Node struct {
-	NodeId    string
-	Mut       sync.Mutex
-	LastMsg   *Message
-	Stdin     io.Reader
-	Stdout    io.Writer
+	NodeId string
+	Stdin  io.Reader
+	Stdout io.Writer
+
+	mut       sync.Mutex
+	lastMsg   *Message
+	nextMsgId uint
 	messages  []int
 	neighbors []string
 }
@@ -43,24 +45,29 @@ func NewNode() *Node {
 	return &Node{
 		Stdin:     os.Stdin,
 		Stdout:    os.Stdout,
+		nextMsgId: 0,
 		messages:  []int{},
 		neighbors: []string{},
 	}
 }
 
 func (n *Node) handleRes(msg *Message) {
-	n.Mut.Lock()
+	n.mut.Lock()
+
+	msg.Body.MsgId = n.nextMsgId
+	n.nextMsgId++
 	json.NewEncoder(n.Stdout).Encode(msg)
-	n.Mut.Unlock()
+
+	n.mut.Unlock()
 }
 
 func (n *Node) res(msg *Message, body *MessageBody) {
-	n.LastMsg = msg
-	body.InReplyTo = n.LastMsg.Body.MsgId
+	n.lastMsg = msg
+	body.InReplyTo = &n.lastMsg.Body.MsgId
 
 	res := Message{
 		Src:  n.NodeId,
-		Dest: n.LastMsg.Src,
+		Dest: n.lastMsg.Src,
 		Body: *body,
 	}
 
@@ -92,7 +99,7 @@ func (n *Node) echo(msg *Message) {
 }
 
 func (n *Node) generate(msg *Message) {
-	id := fmt.Sprintf("id-%s-%d", n.NodeId, *msg.Body.MsgId)
+	id := fmt.Sprintf("id-%s-%d", n.NodeId, msg.Body.MsgId)
 	n.res(msg, &MessageBody{
 		Type: "generate_ok",
 		Id:   &id,
@@ -141,7 +148,7 @@ func (n *Node) topology(msg *Message) {
 
 	n.res(msg, &MessageBody{
 		Type:      "topology_ok",
-		InReplyTo: msg.Body.MsgId,
+		InReplyTo: &msg.Body.MsgId,
 	})
 }
 
