@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"sync"
 )
 
 type Message struct {
@@ -30,10 +31,10 @@ type MessageBody struct {
 
 type Node struct {
 	NodeId    string
+	Mut       sync.Mutex
 	LastMsg   *Message
 	Stdin     io.Reader
 	Stdout    io.Writer
-	resChan   chan Message
 	messages  []int
 	neighbors []string
 }
@@ -42,13 +43,18 @@ func NewNode() *Node {
 	return &Node{
 		Stdin:     os.Stdin,
 		Stdout:    os.Stdout,
-		resChan:   make(chan Message),
 		messages:  []int{},
 		neighbors: []string{},
 	}
 }
 
-func (n *Node) res(msg *Message, body *MessageBody) error {
+func (n *Node) handleRes(msg *Message) {
+	n.Mut.Lock()
+	json.NewEncoder(n.Stdout).Encode(msg)
+	n.Mut.Unlock()
+}
+
+func (n *Node) res(msg *Message, body *MessageBody) {
 	n.LastMsg = msg
 	body.InReplyTo = n.LastMsg.Body.MsgId
 
@@ -58,8 +64,7 @@ func (n *Node) res(msg *Message, body *MessageBody) error {
 		Body: *body,
 	}
 
-	n.resChan <- res
-	return nil
+	n.handleRes(&res)
 }
 
 func (n *Node) send(dest string, body *MessageBody) {
@@ -69,7 +74,7 @@ func (n *Node) send(dest string, body *MessageBody) {
 		Body: *body,
 	}
 
-	n.resChan <- res
+	n.handleRes(&res)
 }
 
 func (n *Node) init(msg *Message) {
@@ -95,13 +100,13 @@ func (n *Node) generate(msg *Message) {
 }
 
 func (n *Node) broadcast(msg *Message) {
+	n.res(msg, &MessageBody{
+		Type: "broadcast_ok",
+	})
 	content := *msg.Body.Message
 
 	for c := range n.messages {
 		if c == content {
-			n.res(msg, &MessageBody{
-				Type: "broadcast_ok",
-			})
 			return
 		}
 	}
@@ -114,10 +119,6 @@ func (n *Node) broadcast(msg *Message) {
 			Message: &content,
 		})
 	}
-
-	n.res(msg, &MessageBody{
-		Type: "broadcast_ok",
-	})
 }
 
 func (n *Node) read(msg *Message) {
@@ -144,21 +145,10 @@ func (n *Node) topology(msg *Message) {
 	})
 }
 
-func (n *Node) handleResponses() {
-	for {
-		select {
-		case msg := <-n.resChan:
-			json.NewEncoder(n.Stdout).Encode(msg)
-		}
-	}
-}
-
 // i guess i need a channel to receive the messages
 // and also one more channel to get the responses
 // that way i can avoid a mutex?
 func (n *Node) Run() error {
-	go n.handleResponses()
-
 	scanner := bufio.NewScanner(n.Stdin)
 	for scanner.Scan() {
 		line := scanner.Bytes()
