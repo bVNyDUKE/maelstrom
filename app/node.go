@@ -77,9 +77,9 @@ func (n *Node) res(msg *Message, body *MessageBody) {
 	n.handleRes(&res)
 }
 
-func (n *Node) send(dest string, body *MessageBody, handler func(*Message)) {
+func (n *Node) send(dest string, body *MessageBody, handler *func(*Message)) {
 	n.mut.Lock()
-	n.callbacks[n.nextMsgId] = handler
+	n.callbacks[n.nextMsgId] = *handler
 	n.mut.Unlock()
 
 	res := Message{
@@ -129,39 +129,33 @@ func (n *Node) broadcast(msg *Message) {
 
 	gossipTo := make([]string, 0, len(n.neighbors))
 	for _, neigh := range n.neighbors {
-		if neigh == msg.Src {
-			continue
+		if neigh != msg.Src {
+			gossipTo = append(gossipTo, neigh)
 		}
-		gossipTo = append(gossipTo, neigh)
 	}
 
-	for {
-		log.Printf("Retrying message %v, gossip to %T", msg.Body.MsgId, gossipTo)
-		if len(gossipTo) == 0 {
-			return
-		}
-
-		for _, dest := range gossipTo {
-			handler := func(msg *Message) {
-				var newGossipTo []string
-				for _, des := range gossipTo {
-					if des == msg.Src {
-						continue
-					}
-					newGossipTo = append(newGossipTo, des)
-				}
-				gossipTo = newGossipTo
+	handler := func(msg *Message) {
+		var newGossipTo []string
+		for _, des := range gossipTo {
+			if des != msg.Src {
+				newGossipTo = append(newGossipTo, des)
 			}
+		}
+		gossipTo = newGossipTo
+	}
+
+	for len(gossipTo) != 0 {
+		for _, dest := range gossipTo {
 			n.send(
 				dest,
 				&MessageBody{
 					Type:    "broadcast",
 					Message: &content,
 				},
-				handler,
+				&handler,
 			)
 		}
-		time.Sleep(time.Duration(1) * time.Second)
+		time.Sleep(time.Duration(50) * time.Millisecond)
 	}
 }
 
@@ -189,16 +183,13 @@ func (n *Node) topology(msg *Message) {
 	})
 }
 
-// i guess i need a channel to receive the messages
-// and also one more channel to get the responses
-// that way i can avoid a mutex?
 func (n *Node) Run() error {
 	scanner := bufio.NewScanner(n.Stdin)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		var msg Message
 		if err := json.Unmarshal(line, &msg); err != nil {
-			os.Exit(1)
+			log.Fatalf("Error deserializing message, %T", line)
 		}
 		go func() {
 			inReply := msg.Body.InReplyTo

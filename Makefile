@@ -6,6 +6,8 @@ GO_SRCS := $(wildcard $(APP_DIR)/*.go)
 EXEC := ./maelstrom-sh
 TEST := docker run --name $(DOCKER_CONTAINER_NAME) -it --rm $(DOCKER_IMAGE_NAME) $(EXEC) test 
 
+# ./maelstrom-sh test -w broadcast --bin mlstrm --time-limit 20 --rate 100 --latency 100 --node-count 25
+
 $(APP_NAME): $(GO_SRCS)
 	cd $(APP_DIR) && go build -o ../$(APP_NAME)
 
@@ -28,7 +30,7 @@ broadcast-partition: build
 	$(TEST) -w broadcast --bin mlstrm --time-limit 20 --rate 10 --node-count 5 --nemesis partition
 
 broadcast-perf: build
-	$(TEST) -w broadcast --bin mlstrm --topology total --time-limit 20 --rate 100 --latency 100 --node-count 25 --nemesis partition
+	$(TEST) -w broadcast --bin mlstrm --time-limit 20 --rate 100 --latency 100 --node-count 25
 
 clean: 
 	rm -f $(APP_NAME)
