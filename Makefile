@@ -1,5 +1,5 @@
 APP_NAME := mlstrm
-DOCKER_IMAGE_NAME := mlstrm-img
+DOCKER_IMAGE_NAME := mlstrm-img:mlstrm
 DOCKER_CONTAINER_NAME := mlstrm-container
 APP_DIR := ./app
 GO_SRCS := $(wildcard $(APP_DIR)/*.go)
