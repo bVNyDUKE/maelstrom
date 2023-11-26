@@ -65,7 +65,10 @@ func (n *Node) handleRes(msg *Message) {
 }
 
 func (n *Node) res(msg *Message, body *MessageBody) {
+	n.mut.Lock()
 	n.lastMsg = msg
+	n.mut.Unlock()
+
 	body.InReplyTo = &n.lastMsg.Body.MsgId
 
 	res := Message{
@@ -187,22 +190,26 @@ func (n *Node) Run() error {
 	scanner := bufio.NewScanner(n.Stdin)
 	for scanner.Scan() {
 		line := scanner.Bytes()
+
 		var msg Message
 		if err := json.Unmarshal(line, &msg); err != nil {
 			log.Fatalf("Error deserializing message, %T", line)
 		}
-		go func() {
-			inReply := msg.Body.InReplyTo
-			if inReply != nil {
-				n.mut.Lock()
-				handler, ok := n.callbacks[*msg.Body.InReplyTo]
-				n.mut.Unlock()
-				if ok {
-					handler(&msg)
-					return
-				}
-			}
 
+		inReply := msg.Body.InReplyTo
+
+		if inReply != nil {
+			n.mut.Lock()
+			handler := n.callbacks[*inReply]
+			delete(n.callbacks, *inReply)
+			n.mut.Unlock()
+			if handler != nil {
+				go handler(&msg)
+			}
+			continue
+		}
+
+		go func() {
 			if msg.Body.Type == "init" {
 				n.init(&msg)
 			}
