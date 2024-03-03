@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"slices"
 	"sync"
 	"time"
 )
@@ -35,8 +36,8 @@ type Node struct {
 	Stdin  io.Reader
 	Stdout io.Writer
 
+	wg        sync.WaitGroup
 	mut       sync.Mutex
-	lastMsg   *Message
 	nextMsgId uint
 	messages  []int
 	neighbors []string
@@ -55,25 +56,22 @@ func NewNode() *Node {
 }
 
 func (n *Node) handleRes(msg *Message) {
-	n.mut.Lock()
+	log.Println("Sending message in reply to", msg.Body.Type)
 
+	n.mut.Lock()
 	msg.Body.MsgId = n.nextMsgId
 	n.nextMsgId++
-	json.NewEncoder(n.Stdout).Encode(msg)
-
 	n.mut.Unlock()
+
+	json.NewEncoder(n.Stdout).Encode(msg)
 }
 
 func (n *Node) res(msg *Message, body *MessageBody) {
-	n.mut.Lock()
-	n.lastMsg = msg
-	n.mut.Unlock()
-
-	body.InReplyTo = &n.lastMsg.Body.MsgId
+	body.InReplyTo = &msg.Body.MsgId
 
 	res := Message{
 		Src:  n.NodeId,
-		Dest: n.lastMsg.Src,
+		Dest: msg.Src,
 		Body: *body,
 	}
 
@@ -99,6 +97,7 @@ func (n *Node) init(msg *Message) {
 	n.res(msg, &MessageBody{
 		Type: "init_ok",
 	})
+	log.Println("Node initialized")
 }
 
 func (n *Node) echo(msg *Message) {
@@ -121,11 +120,8 @@ func (n *Node) broadcast(msg *Message) {
 		Type: "broadcast_ok",
 	})
 	content := *msg.Body.Message
-
-	for _, c := range n.messages {
-		if c == content {
-			return
-		}
+	if slices.Contains(n.messages, content) {
+		return
 	}
 
 	n.messages = append(n.messages, content)
@@ -148,6 +144,7 @@ func (n *Node) broadcast(msg *Message) {
 	}
 
 	for len(gossipTo) != 0 {
+		log.Println("Wooo im sending this because gossip to is", len(gossipTo))
 		for _, dest := range gossipTo {
 			n.send(
 				dest,
@@ -158,7 +155,7 @@ func (n *Node) broadcast(msg *Message) {
 				&handler,
 			)
 		}
-		time.Sleep(time.Duration(50) * time.Millisecond)
+		time.Sleep(time.Duration(250) * time.Millisecond)
 	}
 }
 
@@ -196,20 +193,23 @@ func (n *Node) Run() error {
 			log.Fatalf("Error deserializing message, %T", line)
 		}
 
+		var handler func(*Message)
 		inReply := msg.Body.InReplyTo
-
 		if inReply != nil {
 			n.mut.Lock()
-			handler := n.callbacks[*inReply]
+			handler = n.callbacks[*inReply]
 			delete(n.callbacks, *inReply)
 			n.mut.Unlock()
-			if handler != nil {
-				go handler(&msg)
-			}
-			continue
 		}
 
+		n.wg.Add(1)
 		go func() {
+			defer n.wg.Done()
+			if handler != nil {
+				log.Printf("Handler is %T and message is %+v \n", handler, msg)
+				handler(&msg)
+				return
+			}
 			if msg.Body.Type == "init" {
 				n.init(&msg)
 			}
@@ -228,12 +228,15 @@ func (n *Node) Run() error {
 			if msg.Body.Type == "topology" {
 				n.topology(&msg)
 			}
+			return
 		}()
 	}
 
 	if err := scanner.Err(); err != nil {
 		return err
 	}
+
+	n.wg.Wait()
 
 	return nil
 }
