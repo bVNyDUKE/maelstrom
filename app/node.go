@@ -55,6 +55,21 @@ func NewNode() *Node {
 	}
 }
 
+func (n *Node) addStoredMessages(newMessage int) {
+	n.mut.Lock()
+	n.messages = append(n.messages, newMessage)
+	n.mut.Unlock()
+}
+
+func (n *Node) popCallbackHandler(key uint) func(*Message) {
+	n.mut.Lock()
+	handler := n.callbacks[key]
+	delete(n.callbacks, key)
+	n.mut.Unlock()
+
+	return handler
+}
+
 func (n *Node) handleRes(msg *Message) {
 	log.Println("Sending message in reply to", msg.Body.Type)
 
@@ -124,7 +139,7 @@ func (n *Node) broadcast(msg *Message) {
 		return
 	}
 
-	n.messages = append(n.messages, content)
+	n.addStoredMessages(content)
 
 	gossipTo := make([]string, 0, len(n.neighbors))
 	for _, neigh := range n.neighbors {
@@ -194,12 +209,8 @@ func (n *Node) Run() error {
 		}
 
 		var handler func(*Message)
-		inReply := msg.Body.InReplyTo
-		if inReply != nil {
-			n.mut.Lock()
-			handler = n.callbacks[*inReply]
-			delete(n.callbacks, *inReply)
-			n.mut.Unlock()
+		if inReply := msg.Body.InReplyTo; inReply != nil {
+			handler = n.popCallbackHandler(*inReply)
 		}
 
 		n.wg.Add(1)
