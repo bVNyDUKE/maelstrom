@@ -2,14 +2,17 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"slices"
 	"sync"
 	"time"
+	// "time"
 )
 
 type Message struct {
@@ -41,6 +44,7 @@ type Node struct {
 	nextMsgId uint
 	messages  []int
 	neighbors []string
+	nodeIds   []string
 	callbacks map[uint]func(*Message)
 }
 
@@ -55,9 +59,9 @@ func NewNode() *Node {
 	}
 }
 
-func (n *Node) addStoredMessages(newMessage int) {
+func (n *Node) addStoredMessages(newMessage ...int) {
 	n.mut.Lock()
-	n.messages = append(n.messages, newMessage)
+	n.messages = append(n.messages, newMessage...)
 	n.mut.Unlock()
 }
 
@@ -93,11 +97,7 @@ func (n *Node) res(msg *Message, body *MessageBody) {
 	n.handleRes(&res)
 }
 
-func (n *Node) send(dest string, body *MessageBody, handler *func(*Message)) {
-	n.mut.Lock()
-	n.callbacks[n.nextMsgId] = *handler
-	n.mut.Unlock()
-
+func (n *Node) send(dest string, body *MessageBody) {
 	res := Message{
 		Src:  n.NodeId,
 		Dest: dest,
@@ -109,6 +109,11 @@ func (n *Node) send(dest string, body *MessageBody, handler *func(*Message)) {
 
 func (n *Node) init(msg *Message) {
 	n.NodeId = *msg.Body.NodeId
+
+	n.mut.Lock()
+	n.nodeIds = *msg.Body.NodeIds
+	n.mut.Unlock()
+
 	n.res(msg, &MessageBody{
 		Type: "init_ok",
 	})
@@ -140,38 +145,6 @@ func (n *Node) broadcast(msg *Message) {
 	}
 
 	n.addStoredMessages(content)
-
-	gossipTo := make([]string, 0, len(n.neighbors))
-	for _, neigh := range n.neighbors {
-		if neigh != msg.Src {
-			gossipTo = append(gossipTo, neigh)
-		}
-	}
-
-	handler := func(msg *Message) {
-		var newGossipTo []string
-		for _, des := range gossipTo {
-			if des != msg.Src {
-				newGossipTo = append(newGossipTo, des)
-			}
-		}
-		gossipTo = newGossipTo
-	}
-
-	for len(gossipTo) != 0 {
-		log.Println("Wooo im sending this because gossip to is", len(gossipTo))
-		for _, dest := range gossipTo {
-			n.send(
-				dest,
-				&MessageBody{
-					Type:    "broadcast",
-					Message: &content,
-				},
-				&handler,
-			)
-		}
-		time.Sleep(time.Duration(250) * time.Millisecond)
-	}
 }
 
 func (n *Node) read(msg *Message) {
@@ -198,8 +171,53 @@ func (n *Node) topology(msg *Message) {
 	})
 }
 
+func (n *Node) parseGossip(msg *Message) {
+	newMsgs := make([]int, 0, 20)
+	for _, msg := range *msg.Body.Messages {
+		if slices.Contains(n.messages, msg) {
+			continue
+		}
+		newMsgs = append(newMsgs, msg)
+	}
+	n.addStoredMessages(newMsgs...)
+}
+
+func (n *Node) sendGossip() {
+	if len(n.messages) < 2 {
+		return
+	}
+
+	for _, node := range n.nodeIds {
+		if rand.Intn(2) != 1 {
+			continue
+		}
+
+		n.send(node, &MessageBody{
+			Type:     "gossip",
+			Messages: &n.messages,
+		})
+	}
+}
+
+func (n *Node) startGossiping(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			n.sendGossip()
+			time.Sleep(time.Duration(500) * time.Millisecond)
+		}
+	}
+}
+
 func (n *Node) Run() error {
 	scanner := bufio.NewScanner(n.Stdin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go n.startGossiping(ctx)
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
@@ -208,19 +226,9 @@ func (n *Node) Run() error {
 			log.Fatalf("Error deserializing message, %T", line)
 		}
 
-		var handler func(*Message)
-		if inReply := msg.Body.InReplyTo; inReply != nil {
-			handler = n.popCallbackHandler(*inReply)
-		}
-
 		n.wg.Add(1)
 		go func() {
 			defer n.wg.Done()
-			if handler != nil {
-				log.Printf("Handler is %T and message is %+v \n", handler, msg)
-				handler(&msg)
-				return
-			}
 			if msg.Body.Type == "init" {
 				n.init(&msg)
 			}
@@ -238,6 +246,9 @@ func (n *Node) Run() error {
 			}
 			if msg.Body.Type == "topology" {
 				n.topology(&msg)
+			}
+			if msg.Body.Type == "gossip" {
+				n.parseGossip(&msg)
 			}
 			return
 		}()
