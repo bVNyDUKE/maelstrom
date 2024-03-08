@@ -15,7 +15,7 @@ build: $(APP_NAME) ./Dockerfile
 	docker build . -t $(DOCKER_IMAGE_NAME)
 
 run: build
-	docker run --name $(DOCKER_CONTAINER_NAME) -it $(DOCKER_IMAGE_NAME)
+	docker run --rm --name $(DOCKER_CONTAINER_NAME) -it $(DOCKER_IMAGE_NAME)
 
 test: build
 	$(TEST) -w echo --bin mlstrm --nodes n1 --time-limit 10 --log-stderr
@@ -34,10 +34,3 @@ broadcast-perf: build
 
 broadcast-perf-part: build
 	$(TEST) -w broadcast --bin mlstrm --time-limit 20 --rate 100 --latency 100 --node-count 25 --topology tree4 --nemesis partition
-
-clean: 
-	rm -f $(APP_NAME)
-	docker rm $(DOCKER_CONTAINER_NAME) 2>/dev/null || true
-	docker rmi $(DOCKER_IMAGE_NAME) 2>/dev/null || true
-
-.PHONY: clean
